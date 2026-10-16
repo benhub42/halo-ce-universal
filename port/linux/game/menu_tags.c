@@ -1754,7 +1754,8 @@ static void pause_patch(struct cache_file_tag_instance *instances)
 Its list gets the same SETTINGS (pause_list_patch) before REVERT TO SAVED, a
 copy of it; a list with room centres its rows (Halo PC's), and one that has
 none keeps its size, its rows closer, as its box beside the mission
-objectives' does. Settings there has only the items that work in a game
+objectives' does; so does one whose rows would reach below its last
+(pause_campaign_list_fit). Settings there has only the items that work in a game
 (pause_settings_patch), and Gamepads' OK saves the profile itself. */
 
 #define PAUSE_SETTINGS_LIST "main_menu/settings_select/player_setup/player_profile_edit/profile_edit_select_list"
@@ -1779,6 +1780,26 @@ static void pause_list_fit(struct ui_widget_definition *list, short span)
 
 	for (child = 1; child < count; child++)
 		children[child].vertical_offset = (short)(children[0].vertical_offset + child * span / (count - 1));
+}
+
+/* port: the campaign list after SETTINGS was added, its rows back within
+the span the map's own rows had (first to last), from the first's place,
+and its bounds as they were (bottom): when the list grew, and when it had
+room for SETTINGS at the full spacing but its rows then reach below the
+map's last row, as the Xbox's does: its bounds have room for a fifth row
+and its box does not, so SAVE AND QUIT was drawn over the box's
+"B = CANCEL  A = SELECT" */
+static void pause_campaign_list_fit(struct ui_widget_definition *list, short first, short last, short bottom,
+	boolean grew)
+{
+	struct ui_widget_child_reference *children = list->child_widgets.address;
+	long count = list->child_widgets.count;
+
+	if (count < 2 || (!grew && children[count - 1].vertical_offset <= last))
+		return;
+	children[0].vertical_offset = first;
+	pause_list_fit(list, (short)(last - first));
+	list->bounds.y1 = bottom;
 }
 
 static boolean pause_settings_item_hidden(long tag_index)
@@ -1864,7 +1885,7 @@ static void pause_campaign_patch(struct cache_file_tag_instance *instances)
 	{
 		struct ui_widget_definition *list;
 		struct ui_widget_child_reference const *rows;
-		short span, grow, bottom;
+		short first, last, grow, bottom;
 		long revert;
 
 		if (children[child].widget_tag.index == NONE)
@@ -1882,15 +1903,12 @@ static void pause_campaign_patch(struct cache_file_tag_instance *instances)
 		}
 		if (revert == list->child_widgets.count)
 			return;
-		span = (short)(rows[list->child_widgets.count - 1].vertical_offset - rows[0].vertical_offset);
+		first = rows[0].vertical_offset;
+		last = rows[list->child_widgets.count - 1].vertical_offset;
 		bottom = list->bounds.y1;
 		if (pause_list_patch(instances, list, revert, FALSE, &grow))
 		{
-			if (grow)
-			{
-				pause_list_fit(list, span);
-				list->bounds.y1 = bottom;
-			}
+			pause_campaign_list_fit(list, first, last, bottom, grow != 0);
 			pause_settings_patch();
 			platform_log("menus: the pause menu has SETTINGS");
 		}
