@@ -6,9 +6,10 @@ touch_game.c's switches and one-time cheats, and touch_input.c's
 touch_cheats_update, which reads the menu's asks from the host each frame.
 The switches reach the game's own cheat globals, each one-time cheat runs
 once, a script's own cheats are left alone, and nothing acts as a client in
-another's game or outside a game. test_touch_cheats.py takes the cheat
-globals' structure and the report's bits (config.inc) and the code
-(under_test.inc).
+another's game or outside a game; the camouflage switch is local player
+1's unit's own. test_touch_cheats.py takes the cheat globals' structure,
+the unit flags and the report's bits (config.inc), cheats.c's camouflage
+(cheats.inc) and the code (under_test.inc).
 */
 
 #include "harness.h"
@@ -31,8 +32,26 @@ static boolean network_game_distributed_client(void)
 	return client;
 }
 
+/* local player 1, and its unit: flags and camouflage (players.h, units.h) */
+struct player_datum { long unit_index; };
+struct unit_datum { struct { unsigned long flags; real active_camouflage; } unit; };
+static struct player_datum players[1] = { { 0 } };
+static struct unit_datum units[1];
+static long local_player = 0;
+/* unit_get of no unit: the game's would fail its assertion */
+static int bad_unit_reads;
+
+static long local_player_get_player_index(short local_player_index)
+{
+	return local_player_index == 0 ? local_player : NONE;
+}
+
+#define player_get(index) (&players[(index)])
+#define unit_get(index) ((index) == NONE ? (bad_unit_reads++, &units[0]) : &units[(index)])
+#define SET_FLAG(flags, bit, on) ((on) ? ((flags) |= FLAG(bit)) : ((flags) &= ~FLAG(bit)))
+
 /* the one-time cheats (cheats.c), counted */
-static int weapons, vehicles, powerups, camouflages;
+static int weapons, vehicles, powerups;
 
 static void cheat_all_weapons(void)
 {
@@ -47,11 +66,6 @@ static void cheat_all_vehicles(void)
 static void cheat_all_powerups(void)
 {
 	powerups++;
-}
-
-static void cheat_active_camouflage(void)
-{
-	camouflages++;
 }
 
 /* the host (host_touch.c) and the overlay's menu */
@@ -81,7 +95,13 @@ static void menu_action(int actions)
 	host_actions |= actions;
 }
 
+#include "cheats.inc"
 #include "under_test.inc"
+
+static boolean camouflaged(void)
+{
+	return TEST_FLAG(units[0].unit.flags, _unit_active_camouflaged_bit);
+}
 
 static int switches_on(void)
 {
@@ -123,9 +143,9 @@ int main(int argc, char **argv)
 			CHECK(*expected[index] && switches_on() == 1, "switch %d is not its own cheat", index);
 			CHECK((host_report & 0xffff) == 1 << index, "switch %d reported as %#x", index, host_report);
 		}
-		menu_switches(1 << 9);
+		menu_switches(1 << 10);
 		touch_cheats_update();
-		CHECK(switches_on() == 0, "a switch past the menu's turned a cheat on");
+		CHECK(switches_on() == 0 && !camouflaged(), "a switch past the menu's turned a cheat on");
 		return 0;
 	}
 	/* a script's cheat (b30's deathless player) stays while the menu does nothing */
@@ -146,9 +166,57 @@ int main(int argc, char **argv)
 		menu_action(1 << 1 | 1 << 2 | 1 << 3);
 		touch_cheats_update();
 		touch_cheats_update();
-		CHECK(weapons == 1 && vehicles == 1 && powerups == 1 && camouflages == 1,
-			"ran %d %d %d %d times, not once each", weapons, vehicles, powerups, camouflages);
-		CHECK(switches_on() == 0, "a one-time cheat turned a switch on");
+		CHECK(weapons == 1 && vehicles == 1 && powerups == 1,
+			"ran %d %d %d times, not once each", weapons, vehicles, powerups);
+		CHECK(switches_on() == 0 && !camouflaged(), "a one-time cheat turned a switch on");
+		return 0;
+	}
+	/* camouflage, the tenth switch: on, reported, kept while other switches
+	change, and off as a powerup ends, super camouflage too */
+	CASE("camouflage-switch")
+	{
+		menu_switches(1 << 9);
+		touch_cheats_update();
+		CHECK(camouflaged() && units[0].unit.active_camouflage == 1.0f, "camouflage not on");
+		CHECK(host_report & (1 << 9), "camouflage not reported, %#x", host_report);
+		menu_switches(1 << 9 | 1 << 0);
+		touch_cheats_update();
+		CHECK(!TEST_FLAG(units[0].unit.flags, _unit_super_camouflaged_bit),
+			"another switch's change turned camouflage on again (super camouflage)");
+		CHECK(cheat.deathless_player && camouflaged(), "god mode with camouflage not both on");
+		/* (a second camouflage powerup's super camouflage, players.c) */
+		units[0].unit.flags |= FLAG(_unit_super_camouflaged_bit);
+		menu_switches(1 << 0);
+		touch_cheats_update();
+		CHECK(!camouflaged() && !TEST_FLAG(units[0].unit.flags, _unit_super_camouflaged_bit),
+			"camouflage not turned off: flags %#lx", units[0].unit.flags);
+		CHECK(cheat.deathless_player, "god mode went off with camouflage");
+		CHECK(!(host_report & (1 << 9)), "camouflage still reported, %#x", host_report);
+		return 0;
+	}
+	/* a camouflage powerup picked up shows as the switch on, and the switch turns it off */
+	CASE("camouflage-powerup")
+	{
+		units[0].unit.flags |= FLAG(_unit_active_camouflaged_bit);
+		touch_cheats_update();
+		CHECK(host_report & (1 << 9), "a powerup's camouflage not reported");
+		menu_switches(0);
+		touch_cheats_update();
+		CHECK(!camouflaged(), "the switch did not end a powerup's camouflage");
+		return 0;
+	}
+	/* no unit (dead, before spawning): camouflage asked does nothing and reads off */
+	CASE("camouflage-no-unit")
+	{
+		players[0].unit_index = NONE;
+		menu_switches(1 << 9);
+		touch_cheats_update();
+		CHECK(!(host_report & (1 << 9)), "camouflage reported without a unit");
+		CHECK(bad_unit_reads == 0, "read a unit that is not there %d times", bad_unit_reads);
+		local_player = NONE;
+		menu_switches(0);
+		touch_cheats_update();
+		CHECK(!(host_report & (1 << 9)), "camouflage reported without a player");
 		return 0;
 	}
 	/* a client in another's game: the host's rules; its asks are dropped, not kept for later */

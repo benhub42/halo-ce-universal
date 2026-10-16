@@ -226,11 +226,12 @@ The menu's switches turn the game's own cheats on and off:
 | One-hit kills | `cheat_omnipotent` |
 | Bump possession | `cheat_bump_possession` (walk into a unit to take it over) |
 | Damage effects | `cheat_reflexive_damage_effects` (your hits shake your view) |
+| Camouflage | your unit's active camouflage, as the powerup gives it; off, you fade back in over a few seconds |
 
 Its buttons place objects around the player once: "All weapons", "All
-vehicles" (the map's multiplayer vehicles), "All powerups" and
-"Camouflage". The button lights up while a switch is on. The switches
-last until the app closes, across levels; scripts set some too (the last
+vehicles" (the map's multiplayer vehicles) and "All powerups". The button lights up while a switch is on. The switches
+last until the app closes, across levels (camouflage ends when you die, as
+the powerup's does); scripts set some too (the last
 level makes the player deathless around its cinematics), and the menu
 shows them as they are.
 

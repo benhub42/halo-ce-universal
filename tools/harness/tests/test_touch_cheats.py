@@ -8,10 +8,12 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from harness import CHECK_FAILED, build, enum_with, function, mutated, read, run, structure  # noqa: E402
+from harness import CHECK_FAILED, build, constant, enum_with, function, mutated, read, run, structure  # noqa: E402
 
-CASES = ["switches-apply", "every-switch", "scripts-kept", "actions-once", "client-refused", "not-playing"]
-GAME_FUNCTIONS = ("touch_game_cheat_switch", "touch_game_cheats_allowed", "touch_game_cheats_state",
+CASES = ["switches-apply", "every-switch", "scripts-kept", "actions-once", "camouflage-switch", "camouflage-powerup",
+         "camouflage-no-unit", "client-refused", "not-playing"]
+GAME_FUNCTIONS = ("touch_game_cheat_switch", "touch_game_player_unit", "touch_game_camouflaged",
+                  "touch_game_camouflage_set", "touch_game_cheats_allowed", "touch_game_cheats_state",
                   "touch_game_cheats_set", "touch_game_cheats_act")
 INPUT_FUNCTIONS = ("touch_cheats_update",)
 
@@ -25,6 +27,15 @@ NEGATIVE_CONTROLS = {
                             "touch_cheats_update", "client-refused"),
     "switches-swapped": (("case 5: return &cheat.medusa;", "case 5: return &cheat.omnipotent;"),
                          "touch_game_cheat_switch", "every-switch"),
+    "camouflage-reapplied": (("\tif (camouflage != touch_game_camouflaged())\n"
+                               "\t\ttouch_game_camouflage_set(camouflage);",
+                               "\ttouch_game_camouflage_set(camouflage);"), "touch_game_cheats_set",
+                             "camouflage-switch"),
+    "camouflage-off-keeps-super": (("~(FLAG(_unit_active_camouflaged_bit) | FLAG(_unit_super_camouflaged_bit))",
+                                    "~FLAG(_unit_active_camouflaged_bit)"), "touch_game_camouflage_set",
+                                   "camouflage-switch"),
+    "dead-unit-camouflaged": (("\tif (player->unit_index == NONE)\n\t\treturn NULL;\n", ""),
+                              "touch_game_player_unit", "camouflage-no-unit"),
     "action-twice": (("\tif (actions & (1 << 1))\n\t\tcheat_all_vehicles();",
                       "\tif (actions & (1 << 1))\n\t\tcheat_all_vehicles();\n\tif (actions)\n\t\tcheat_all_weapons();"),
                      "touch_game_cheats_act", "actions-once"),
@@ -36,6 +47,10 @@ def generated(fault=None, faulty_function=None):
     platform = read("port/linux/src/touch_input.c")
     config = structure(read("source/game/cheats.h"), "cheat_globals") + "\n"
     config += enum_with(platform, "_touch_cheats_allowed") + "\n"
+    config += enum_with(read("source/units/units.h"), "_unit_active_camouflaged_bit") + "\n"
+    config += f"#define MAXIMUM_LOCAL_PLAYERS {constant(read('source/game/players.h'), 'MAXIMUM_LOCAL_PLAYERS')}\n"
+    config += f"#define TOUCH_GAME_CHEAT_CAMOUFLAGE {constant(game, 'TOUCH_GAME_CHEAT_CAMOUFLAGE')}\n"
+    cheats = function(read("source/game/cheats.c"), "cheat_active_camouflage_local_player") + "\n"
     text = ""
     for source, names in ((game, GAME_FUNCTIONS), (platform, INPUT_FUNCTIONS)):
         for name in names:
@@ -43,7 +58,7 @@ def generated(fault=None, faulty_function=None):
             if fault and name == faulty_function:
                 code = mutated(code, *fault)
             text += code + "\n"
-    return (("config.inc", config), ("under_test.inc", text))
+    return (("config.inc", config), ("cheats.inc", cheats), ("under_test.inc", text))
 
 
 @pytest.mark.parametrize("case", CASES)
