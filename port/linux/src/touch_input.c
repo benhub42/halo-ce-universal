@@ -38,6 +38,7 @@ int touch_game_cheats_allowed(void);
 int touch_game_cheats_state(void);
 void touch_game_cheats_set(int bits);
 void touch_game_cheats_act(int actions);
+void touch_game_super_jump_set(int percent);
 
 /* the gamepad's buttons (input.h), which the touch controls are named by */
 #define TOUCH_BUTTONS 16
@@ -266,17 +267,18 @@ static int touch_cheats_setting(void)
 	return setting;
 }
 
-/* applies what the cheats menu asked since the last read: its switches when
-they changed, and its one-time cheats, here on the game's main thread
+/* applies what the cheats menu asked since the last read: the super jump's
+strength, its switches when they changed, and its one-time cheats, here on the game's main thread
 (between ticks, as the console's cheats run); asks while cheats may not act
 are dropped. Then tells the menu the switches that are on. */
 static void touch_cheats_update(void)
 {
 	static int serial_read;
-	int request[3];
+	int request[4];
 	int allowed;
 
 	host_touch_cheats_read(request);
+	touch_game_super_jump_set(request[3]);
 	allowed = touch_game_cheats_allowed();
 	if (allowed)
 	{

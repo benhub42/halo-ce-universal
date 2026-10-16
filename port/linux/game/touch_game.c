@@ -134,6 +134,29 @@ static void touch_game_camouflage_set(boolean on)
 		unit->unit.flags &= ~(FLAG(_unit_active_camouflaged_bit) | FLAG(_unit_super_camouflaged_bit));
 }
 
+/* the super jump's strength: the jump's speed times this (the height
+grows as its square); 4 as the original's until the cheats menu sets it */
+#define TOUCH_GAME_SUPER_JUMP_MINIMUM_PERCENT 100
+#define TOUCH_GAME_SUPER_JUMP_MAXIMUM_PERCENT 400
+static float touch_game_super_jump = 4.0f;
+
+float touch_game_super_jump_scale(void)
+{
+	return touch_game_super_jump;
+}
+
+/* sets it from the menu, in percent; 0 (not set yet) leaves it */
+void touch_game_super_jump_set(int percent)
+{
+	if (percent <= 0)
+		return;
+	if (percent < TOUCH_GAME_SUPER_JUMP_MINIMUM_PERCENT)
+		percent = TOUCH_GAME_SUPER_JUMP_MINIMUM_PERCENT;
+	if (percent > TOUCH_GAME_SUPER_JUMP_MAXIMUM_PERCENT)
+		percent = TOUCH_GAME_SUPER_JUMP_MAXIMUM_PERCENT;
+	touch_game_super_jump = (float)percent / 100.0f;
+}
+
 /* asks whether the cheats menu may act: in a game being played, and not as
 a client in another's game, where the host's rules hold
 (cheats_network_client_enforce puts a client's cheats back each frame) */

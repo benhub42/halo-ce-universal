@@ -133,9 +133,9 @@ void host_touch_scene(int scene);
 /* the game control on each of the 16 controller buttons (touch_game.c),
 for the overlay's labels */
 void host_touch_bindings(const int *controls);
-/* the cheats menu's asks since the last read, into request[3]: the count of
-its changes, the switches it wants and the one-time cheats (touch_game.c's
-bits) */
+/* the cheats menu's asks since the last read, into request[4]: the count of
+its changes, the switches it wants, the one-time cheats (touch_game.c's
+bits) and the super jump's strength in percent (0: not set) */
 void host_touch_cheats_read(int *request);
 /* tells the cheats menu whether it may act and which switches are on
 (touch_input.c's _touch_cheats_*) */

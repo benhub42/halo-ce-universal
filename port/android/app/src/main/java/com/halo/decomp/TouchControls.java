@@ -13,6 +13,7 @@ import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.hardware.input.InputManager;
 import android.media.AudioAttributes;
+import android.media.AudioManager;
 import android.os.Build;
 import android.os.SystemClock;
 import android.os.VibrationEffect;
@@ -21,6 +22,7 @@ import android.os.VibratorManager;
 import android.util.SparseArray;
 import android.util.SparseIntArray;
 import android.view.InputDevice;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
@@ -112,6 +114,15 @@ public final class TouchControls extends View implements SensorEventListener, In
         {"Camouflage", "Enemies can hardly see you; off fades you back in"},
         {"Time freeze", "Everything stops but you (offline games only)"},
     };
+    /** the time freeze's switch (touch_game.c's TOUCH_GAME_CHEAT_TIME_FREEZE) */
+    private static final int CHEAT_TIME_FREEZE = 10;
+    /** the super jump's strength (the jump's speed times this; touch_game.c keeps it within 1..4) */
+    private static final float SUPER_JUMP_MIN = 1f;
+    private static final float SUPER_JUMP_MAX = 4f;
+    private static final float SUPER_JUMP_STEP = 0.25f;
+    private static final float SUPER_JUMP_DEFAULT = 2f;
+    /** a second press of a volume key this soon after the first is a double press */
+    private static final long DOUBLE_PRESS_MS = 400;
     /** the menu's one-time cheats, in the order of touch_game.c's bits */
     private static final String[] CHEAT_ACTIONS = {"All weapons", "All vehicles", "All powerups"};
 
@@ -121,6 +132,8 @@ public final class TouchControls extends View implements SensorEventListener, In
     /** where the Cheats button floats, as fractions of the display (none: its first place) */
     private static final String KEY_CHEATS_X = "cheats-x";
     private static final String KEY_CHEATS_Y = "cheats-y";
+    private static final String KEY_SUPER_JUMP = "cheats-super-jump";
+    private static final String KEY_VOLUME_FREEZE = "cheats-volume-freeze";
 
     /**
      * a kind of control: the SDL button bit or trigger axis it sends (-1 for
@@ -185,6 +198,7 @@ public final class TouchControls extends View implements SensorEventListener, In
     private static native void nativeCheats(int switches);
     private static native void nativeCheatAction(int actions);
     private static native int nativeCheatsState();
+    private static native void nativeSuperJump(int percent);
 
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final SharedPreferences preferences;
@@ -259,6 +273,16 @@ public final class TouchControls extends View implements SensorEventListener, In
     private float cheatsOffsetX;
     private float cheatsOffsetY;
     private boolean cheatsDragging;
+    private float superJump = SUPER_JUMP_DEFAULT;
+    /** a double press of Volume up freezes time, of Volume down lets it go on */
+    private boolean volumeFreeze = true;
+    /** a volume key pressed once, waiting for its second press (0: none) */
+    private int pendingVolumeKey;
+    private final Runnable pendingVolume = () -> {
+        int key = pendingVolumeKey;
+        pendingVolumeKey = 0;
+        adjustVolume(key);
+    };
 
     /** reads what the game says every frame: when to show, the buttons' names, and the rumble */
     private final Runnable poll = new Runnable() {
@@ -292,6 +316,9 @@ public final class TouchControls extends View implements SensorEventListener, In
         hidden = preferences.getBoolean(KEY_HIDDEN, false);
         cheatsFractionX = preferences.getFloat(KEY_CHEATS_X, -1);
         cheatsFractionY = preferences.getFloat(KEY_CHEATS_Y, -1);
+        superJump = Math.max(SUPER_JUMP_MIN,
+            Math.min(SUPER_JUMP_MAX, preferences.getFloat(KEY_SUPER_JUMP, SUPER_JUMP_DEFAULT)));
+        volumeFreeze = preferences.getBoolean(KEY_VOLUME_FREEZE, true);
         refreshInputDevices();
         setFocusable(false);
         setContentDescription("Halo touch controller");
@@ -336,12 +363,14 @@ public final class TouchControls extends View implements SensorEventListener, In
         refreshInputDevices();
         gyroAim.reset();
         updateSensors();
+        nativeSuperJump(Math.round(superJump * 100));
         post(poll);
     }
 
     public void stopDeviceInput() {
         deviceInputActive = false;
         removeCallbacks(poll);
+        flushPendingVolume();
         if (inputManager != null)
             inputManager.unregisterInputDeviceListener(this);
         updateSensors();
@@ -1258,6 +1287,42 @@ public final class TouchControls extends View implements SensorEventListener, In
                 nativeCheats(bits);
             });
         }
+        TextView jumpLabel = text("");
+        jumpLabel.setPadding(0, 16, 0, 0);
+        SeekBar jump = new SeekBar(getContext());
+        jump.setMax(Math.round((SUPER_JUMP_MAX - SUPER_JUMP_MIN) / SUPER_JUMP_STEP));
+        jump.setProgress(Math.round((superJump - SUPER_JUMP_MIN) / SUPER_JUMP_STEP));
+        Runnable showJump = () -> jumpLabel.setText(String.format(Locale.US,
+            "Super jump strength: %.2fx (1x a normal jump, 4x the original cheat)", superJump));
+        showJump.run();
+        jump.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar bar, int progress, boolean user) {
+                superJump = Math.min(SUPER_JUMP_MAX, SUPER_JUMP_MIN + progress * SUPER_JUMP_STEP);
+                showJump.run();
+                nativeSuperJump(Math.round(superJump * 100));
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar bar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar bar) {
+                preferences.edit().putFloat(KEY_SUPER_JUMP, superJump).apply();
+            }
+        });
+        panel.addView(jumpLabel);
+        panel.addView(jump);
+        Switch volume = new Switch(getContext());
+        volume.setText("Volume keys: press Up twice to freeze time, Down twice to let it go on");
+        volume.setChecked(volumeFreeze);
+        volume.setPadding(0, 16, 0, 8);
+        volume.setOnCheckedChangeListener((view, checked) -> {
+            volumeFreeze = checked;
+            preferences.edit().putBoolean(KEY_VOLUME_FREEZE, checked).apply();
+        });
+        panel.addView(volume);
         TextView spawn = text("Once (around you)");
         spawn.setPadding(0, 24, 0, 4);
         panel.addView(spawn);
@@ -1275,6 +1340,74 @@ public final class TouchControls extends View implements SensorEventListener, In
             .setView(scroll)
             .setPositiveButton("Done", null)
             .create());
+    }
+
+    /** freezes time or lets it go on, as the menu's switch does (the other switches as they are) */
+    private void setTimeFreeze(boolean on) {
+        readCheats();
+        if (!cheatsAllowed()) {
+            toast("Cheats work only in your own games: in another player's game its host's rules hold.");
+            return;
+        }
+        int bits = cheatsState & CHEATS_SWITCH_MASK;
+        bits = on ? bits | (1 << CHEAT_TIME_FREEZE) : bits & ~(1 << CHEAT_TIME_FREEZE);
+        nativeCheats(bits);
+        Toast.makeText(getContext(), on ? "Time frozen" : "Time goes on", Toast.LENGTH_SHORT).show();
+    }
+
+    /** the volume keys freeze time only in a game, with the Cheats button there and no menu of the app's open */
+    private boolean volumeKeysFreeze() {
+        return volumeFreeze && deviceInputActive && showing && cheatsShown() && openDialogs == 0;
+    }
+
+    private void adjustVolume(int key) {
+        if (key == 0)
+            return;
+        AudioManager audio = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
+        if (audio != null) {
+            audio.adjustStreamVolume(AudioManager.STREAM_MUSIC,
+                key == KeyEvent.KEYCODE_VOLUME_UP ? AudioManager.ADJUST_RAISE : AudioManager.ADJUST_LOWER,
+                AudioManager.FLAG_SHOW_UI);
+        }
+    }
+
+    /** a single press waiting for its second changes the volume now */
+    private void flushPendingVolume() {
+        if (pendingVolumeKey != 0) {
+            removeCallbacks(pendingVolume);
+            pendingVolume.run();
+        }
+    }
+
+    /**
+     * the activity's volume keys (HaloActivity.dispatchKeyEvent); true when
+     * taken. In a game a press waits DOUBLE_PRESS_MS for its second: a
+     * double press of Up freezes time and of Down lets it go on, and a
+     * single press, or a held key, changes the volume as it does elsewhere.
+     */
+    public boolean volumeKey(KeyEvent event) {
+        int key = event.getKeyCode();
+        if (key != KeyEvent.KEYCODE_VOLUME_UP && key != KeyEvent.KEYCODE_VOLUME_DOWN)
+            return false;
+        if (!volumeKeysFreeze()) {
+            flushPendingVolume();
+            return false;
+        }
+        if (event.getAction() != KeyEvent.ACTION_DOWN)
+            return true;
+        if (event.getRepeatCount() > 0) {
+            flushPendingVolume();
+            adjustVolume(key);
+        } else if (pendingVolumeKey == key) {
+            removeCallbacks(pendingVolume);
+            pendingVolumeKey = 0;
+            setTimeFreeze(key == KeyEvent.KEYCODE_VOLUME_UP);
+        } else {
+            flushPendingVolume();
+            pendingVolumeKey = key;
+            postDelayed(pendingVolume, DOUBLE_PRESS_MS);
+        }
+        return true;
     }
 
     // ---------- the gyroscope and the vibration

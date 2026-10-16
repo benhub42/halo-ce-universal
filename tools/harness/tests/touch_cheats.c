@@ -90,13 +90,14 @@ static void cheat_all_powerups(void)
 }
 
 /* the host (host_touch.c) and the overlay's menu */
-static int host_serial, host_wanted, host_actions, host_report;
+static int host_serial, host_wanted, host_actions, host_report, host_super_jump;
 
 static void host_touch_cheats_read(int *request)
 {
 	request[0] = host_serial;
 	request[1] = host_wanted;
 	request[2] = host_actions;
+	request[3] = host_super_jump;
 	host_actions = 0;
 }
 
@@ -213,6 +214,29 @@ int main(int argc, char **argv)
 			"camouflage not turned off: flags %#lx", units[0].unit.flags);
 		CHECK(cheat.deathless_player, "god mode went off with camouflage");
 		CHECK(!(host_report & (1 << 9)), "camouflage still reported, %#x", host_report);
+		return 0;
+	}
+	/* the super jump's strength: 4 (the original's) until the menu sets it,
+	then as set, kept within 1 and 4 */
+	CASE("super-jump-strength")
+	{
+		touch_cheats_update();
+		CHECK(touch_game_super_jump_scale() == 4.0f, "%g before the menu sets it, not 4",
+			touch_game_super_jump_scale());
+		host_super_jump = 225;
+		touch_cheats_update();
+		CHECK(touch_game_super_jump_scale() == 2.25f, "%g, not 2.25", touch_game_super_jump_scale());
+		host_super_jump = 20;
+		touch_cheats_update();
+		CHECK(touch_game_super_jump_scale() == 1.0f, "%g: below a normal jump", touch_game_super_jump_scale());
+		host_super_jump = 5000;
+		touch_cheats_update();
+		CHECK(touch_game_super_jump_scale() == 4.0f, "%g: above the original's", touch_game_super_jump_scale());
+		/* (set outside a game too: it is the menu's, not a cheat that acts) */
+		playing = FALSE;
+		host_super_jump = 150;
+		touch_cheats_update();
+		CHECK(touch_game_super_jump_scale() == 1.5f, "%g, not 1.5 outside a game", touch_game_super_jump_scale());
 		return 0;
 	}
 	/* the time freeze, the eleventh switch: on, reported, set once while

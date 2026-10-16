@@ -9,6 +9,7 @@ import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.Display;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
@@ -62,6 +63,14 @@ public class HaloActivity extends SDLActivity {
         acquireMulticastLock();
         // a new version looked for while the game starts
         Updater.start(this);
+    }
+
+    /** the volume keys freeze time in a game (TouchControls.volumeKey), else go to Android as SDL leaves them */
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (touchControls != null && touchControls.volumeKey(event))
+            return true;
+        return super.dispatchKeyEvent(event);
     }
 
     /** the system's file picker, for the touch layout; no storage permission */

@@ -11,10 +11,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, constant, enum_with, function, mutated, read, run, structure  # noqa: E402
 
 CASES = ["switches-apply", "every-switch", "scripts-kept", "actions-once", "camouflage-switch", "time-freeze-switch",
-         "camouflage-powerup", "camouflage-no-unit", "client-refused", "not-playing"]
-GAME_FUNCTIONS = ("touch_game_cheat_switch", "touch_game_player_unit", "touch_game_camouflaged",
-                  "touch_game_camouflage_set", "touch_game_cheats_allowed", "touch_game_cheats_state",
-                  "touch_game_cheats_set", "touch_game_cheats_act")
+         "super-jump-strength", "camouflage-powerup", "camouflage-no-unit", "client-refused", "not-playing"]
+GAME_FUNCTIONS = ("touch_game_super_jump_scale", "touch_game_super_jump_set", "touch_game_cheat_switch",
+                  "touch_game_player_unit", "touch_game_camouflaged", "touch_game_camouflage_set",
+                  "touch_game_cheats_allowed", "touch_game_cheats_state", "touch_game_cheats_set",
+                  "touch_game_cheats_act")
 INPUT_FUNCTIONS = ("touch_cheats_update",)
 
 # a fault, the function it is in, and the case that must catch it
@@ -40,6 +41,11 @@ NEGATIVE_CONTROLS = {
                               "not-playing"),
     "freeze-set-every-change": (("\tif (time_freeze != time_freeze_wanted())\n\t\ttime_freeze_set(time_freeze);",
                                  "\ttime_freeze_set(time_freeze);"), "touch_game_cheats_set", "time-freeze-switch"),
+    "jump-unclamped": (("\tif (percent > TOUCH_GAME_SUPER_JUMP_MAXIMUM_PERCENT)\n"
+                        "\t\tpercent = TOUCH_GAME_SUPER_JUMP_MAXIMUM_PERCENT;\n", ""), "touch_game_super_jump_set",
+                       "super-jump-strength"),
+    "jump-unset-zeroes": (("\tif (percent <= 0)\n\t\treturn;\n", ""), "touch_game_super_jump_set",
+                          "super-jump-strength"),
     "action-twice": (("\tif (actions & (1 << 1))\n\t\tcheat_all_vehicles();",
                       "\tif (actions & (1 << 1))\n\t\tcheat_all_vehicles();\n\tif (actions)\n\t\tcheat_all_weapons();"),
                      "touch_game_cheats_act", "actions-once"),
@@ -55,6 +61,9 @@ def generated(fault=None, faulty_function=None):
     config += f"#define MAXIMUM_LOCAL_PLAYERS {constant(read('source/game/players.h'), 'MAXIMUM_LOCAL_PLAYERS')}\n"
     config += f"#define TOUCH_GAME_CHEAT_CAMOUFLAGE {constant(game, 'TOUCH_GAME_CHEAT_CAMOUFLAGE')}\n"
     config += f"#define TOUCH_GAME_CHEAT_TIME_FREEZE {constant(game, 'TOUCH_GAME_CHEAT_TIME_FREEZE')}\n"
+    for name in ("TOUCH_GAME_SUPER_JUMP_MINIMUM_PERCENT", "TOUCH_GAME_SUPER_JUMP_MAXIMUM_PERCENT"):
+        config += f"#define {name} {constant(game, name)}\n"
+    config += "static float touch_game_super_jump = 4.0f;\n"
     cheats = function(read("source/game/cheats.c"), "cheat_active_camouflage_local_player") + "\n"
     text = ""
     for source, names in ((game, GAME_FUNCTIONS), (platform, INPUT_FUNCTIONS)):

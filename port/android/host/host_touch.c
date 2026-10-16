@@ -54,6 +54,8 @@ _touch_cheats_* bits and the switches that are on) */
 static int32_t cheats_wanted;
 static int32_t cheats_serial;
 static int32_t cheats_actions;
+/* the super jump's strength, in percent (0: not set yet) */
+static int32_t cheats_super_jump;
 static volatile int32_t cheats_reported;
 
 static int64_t now_ns(void)
@@ -259,6 +261,16 @@ JNIEXPORT void JNICALL Java_com_halo_decomp_TouchControls_nativeCheatAction(JNIE
 	pthread_mutex_unlock(&touch_lock);
 }
 
+/* the super jump's strength, in percent, for the game's next read */
+JNIEXPORT void JNICALL Java_com_halo_decomp_TouchControls_nativeSuperJump(JNIEnv *env, jclass cls, jint percent)
+{
+	(void)env;
+	(void)cls;
+	pthread_mutex_lock(&touch_lock);
+	cheats_super_jump = percent;
+	pthread_mutex_unlock(&touch_lock);
+}
+
 /* what the game last reported; 0 before its first read */
 JNIEXPORT jint JNICALL Java_com_halo_decomp_TouchControls_nativeCheatsState(JNIEnv *env, jclass cls)
 {
@@ -269,13 +281,15 @@ JNIEXPORT jint JNICALL Java_com_halo_decomp_TouchControls_nativeCheatsState(JNIE
 
 /* the guest's, at every read of port 0: the count of the menu's changes,
 the switches it wants and the one-time cheats asked for since the last
-read, into request[3] */
+read and the super jump's strength (percent, 0 before the menu sets it),
+into request[4] */
 void host_touch_cheats_read(int32_t *request)
 {
 	pthread_mutex_lock(&touch_lock);
 	request[0] = cheats_serial;
 	request[1] = cheats_wanted;
 	request[2] = cheats_actions;
+	request[3] = cheats_super_jump;
 	cheats_actions = 0;
 	pthread_mutex_unlock(&touch_lock);
 }

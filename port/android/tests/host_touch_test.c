@@ -14,6 +14,7 @@ machine's C compiler and a stand-in JNI header (tests/jni_stub).
 void Java_com_halo_decomp_TouchControls_nativeCheats(JNIEnv *env, jclass cls, jint switches);
 void Java_com_halo_decomp_TouchControls_nativeCheatAction(JNIEnv *env, jclass cls, jint actions);
 jint Java_com_halo_decomp_TouchControls_nativeCheatsState(JNIEnv *env, jclass cls);
+void Java_com_halo_decomp_TouchControls_nativeSuperJump(JNIEnv *env, jclass cls, jint percent);
 void host_touch_cheats_read(int32_t *request);
 void host_touch_cheats_report(int32_t state);
 
@@ -30,11 +31,12 @@ static void expect(int condition, const char *what)
 
 int main(void)
 {
-	int32_t request[3];
+	int32_t request[4];
 	int32_t serial;
 
 	host_touch_cheats_read(request);
 	expect(request[0] == 0 && request[1] == 0 && request[2] == 0, "nothing asked before the menu acts");
+	expect(request[3] == 0, "no super jump strength before the menu sets it");
 	expect(Java_com_halo_decomp_TouchControls_nativeCheatsState(NULL, NULL) == 0,
 		"the overlay reads 0 before the game reports");
 
@@ -58,6 +60,12 @@ int main(void)
 	expect(request[2] == (1 << 0 | 1 << 2), "one-time cheats asked between reads all reach the game");
 	host_touch_cheats_read(request);
 	expect(request[2] == 0, "each one-time cheat reaches the game once");
+
+	Java_com_halo_decomp_TouchControls_nativeSuperJump(NULL, NULL, 225);
+	host_touch_cheats_read(request);
+	expect(request[3] == 225, "the super jump's strength reaches the game");
+	host_touch_cheats_read(request);
+	expect(request[3] == 225, "the super jump's strength stays for every read");
 
 	host_touch_cheats_report(1 << 17 | 1 << 16 | 1 << 1);
 	expect(Java_com_halo_decomp_TouchControls_nativeCheatsState(NULL, NULL) == (1 << 17 | 1 << 16 | 1 << 1),

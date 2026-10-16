@@ -26,6 +26,10 @@ void render_interpolation_first_person(short local_player_index, struct real_mat
 	short node_count, struct render_camera const *camera);
 float render_interpolation_game_time_sec(long ticks);
 
+/* the cheats menu's super jump strength, the jump's speed times this (4 as
+the original's; port/linux/game/touch_game.c) */
+float touch_game_super_jump_scale(void);
+
 /* the Custom Edition tag cache window, or NULL unless the
 game.custom_edition setting reserved it (port/linux/src/xbox_memory.c) */
 void *halo_custom_edition_tag_cache(void);

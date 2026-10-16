@@ -221,13 +221,19 @@ The menu's switches turn the game's own cheats on and off:
 | Infinite ammo | `cheat_infinite_ammo` (no grenades or reserve used) |
 | Bottomless clip | `cheat_bottomless_clip` (never reload) |
 | Jetpack | `cheat_jetpack` |
-| Super jump | `cheat_super_jump` |
+| Super jump | `cheat_super_jump`, its strength set by the menu's slider: the jump's speed 1x (a normal jump) to 4x (the original cheat), 2x at first |
 | Medusa | `cheat_medusa` (enemies that see you die) |
 | One-hit kills | `cheat_omnipotent` |
 | Bump possession | `cheat_bump_possession` (walk into a unit to take it over) |
 | Damage effects | `cheat_reflexive_damage_effects` (your hits shake your view) |
 | Camouflage | your unit's active camouflage, as the powerup gives it; off, you fade back in over a few seconds |
 | Time freeze | everything stops but you (and what you ride): no object but the players' moves, no actor thinks, no script runs. What you fire stops in the air until you turn it off. Offline games only; it goes off at a new level or a revert, and a cinematic plays on as usual. |
+
+In a game, the volume keys work the time freeze: press Volume up twice
+quickly to freeze time, Volume down twice to let it go on. A single press
+changes the volume as usual, a moment later, and holding a key changes it
+at once. The menu's "Volume keys" switch turns this off; in the menus and
+during cinematics the keys only change the volume.
 
 Its buttons place objects around the player once: "All weapons", "All
 vehicles" (the map's multiplayer vehicles) and "All powerups". The button lights up while a switch is on. The switches

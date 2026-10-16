@@ -1876,7 +1876,7 @@ static boolean biped_jump(
 				1.f - biped->unit.body_stun*player_information->stun_turning_penalty;
 		}
 		if (cheat.super_jump && biped->unit.player_index!=NONE)
-			jump_magnitude *= 4.f;
+			jump_magnitude *= touch_game_super_jump_scale(); /* port: the cheats menu's strength, 4.f as the original */
 
 		jump_velocity = biped->object.translational_velocity;
 		{
