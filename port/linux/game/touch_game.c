@@ -89,12 +89,18 @@ static boolean *touch_game_cheat_switch(int index)
 (its flag, as a camouflage powerup sets it), not a cheat global */
 #define TOUCH_GAME_CHEAT_CAMOUFLAGE 9
 
-/* the unit of local player 1 (the touch controls' player), NULL without */
+/* the unit of local player 1 (the touch controls' player), NULL without;
+only in a game being played: the controller is read from the first frame,
+before game_initialize makes the players' globals (players_globals is NULL
+until then), and between maps */
 static struct unit_datum *touch_game_player_unit(void)
 {
-	long player_index = local_player_get_player_index(0);
+	long player_index;
 	struct player_datum *player;
 
+	if (!touch_game_playing())
+		return NULL;
+	player_index = local_player_get_player_index(0);
 	if (player_index == NONE)
 		return NULL;
 	player = player_get(player_index);

@@ -41,8 +41,14 @@ static long local_player = 0;
 /* unit_get of no unit: the game's would fail its assertion */
 static int bad_unit_reads;
 
+/* reads of the players' globals outside a game: the game's has none yet
+(players_globals is NULL before game_initialize) and would crash */
+static int bad_player_reads;
+
 static long local_player_get_player_index(short local_player_index)
 {
+	if (!playing)
+		bad_player_reads++;
 	return local_player_index == 0 ? local_player : NONE;
 }
 
@@ -244,6 +250,8 @@ int main(int argc, char **argv)
 		touch_cheats_update();
 		CHECK(switches_on() == 0 && vehicles == 0, "cheats acted outside a game");
 		CHECK(!(host_report & _touch_cheats_allowed), "reported allowed outside a game");
+		CHECK(bad_player_reads == 0, "read the players' globals %d times outside a game (a crash at start)",
+			bad_player_reads);
 		return 0;
 	}
 

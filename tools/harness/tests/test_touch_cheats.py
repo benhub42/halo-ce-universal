@@ -36,6 +36,8 @@ NEGATIVE_CONTROLS = {
                                    "camouflage-switch"),
     "dead-unit-camouflaged": (("\tif (player->unit_index == NONE)\n\t\treturn NULL;\n", ""),
                               "touch_game_player_unit", "camouflage-no-unit"),
+    "players-read-at-start": (("\tif (!touch_game_playing())\n\t\treturn NULL;\n", ""), "touch_game_player_unit",
+                              "not-playing"),
     "action-twice": (("\tif (actions & (1 << 1))\n\t\tcheat_all_vehicles();",
                       "\tif (actions & (1 << 1))\n\t\tcheat_all_vehicles();\n\tif (actions)\n\t\tcheat_all_weapons();"),
                      "touch_game_cheats_act", "actions-once"),
