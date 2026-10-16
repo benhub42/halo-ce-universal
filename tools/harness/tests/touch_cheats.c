@@ -56,6 +56,21 @@ static long local_player_get_player_index(short local_player_index)
 #define unit_get(index) ((index) == NONE ? (bad_unit_reads++, &units[0]) : &units[(index)])
 #define SET_FLAG(flags, bit, on) ((on) ? ((flags) |= FLAG(bit)) : ((flags) &= ~FLAG(bit)))
 
+/* the time freeze (time_freeze.c), and how often it was set */
+static boolean frozen;
+static int freeze_sets;
+
+static void time_freeze_set(boolean on)
+{
+	frozen = on;
+	freeze_sets++;
+}
+
+static boolean time_freeze_wanted(void)
+{
+	return frozen;
+}
+
 /* the one-time cheats (cheats.c), counted */
 static int weapons, vehicles, powerups;
 
@@ -149,9 +164,9 @@ int main(int argc, char **argv)
 			CHECK(*expected[index] && switches_on() == 1, "switch %d is not its own cheat", index);
 			CHECK((host_report & 0xffff) == 1 << index, "switch %d reported as %#x", index, host_report);
 		}
-		menu_switches(1 << 10);
+		menu_switches(1 << 11);
 		touch_cheats_update();
-		CHECK(switches_on() == 0 && !camouflaged(), "a switch past the menu's turned a cheat on");
+		CHECK(switches_on() == 0 && !camouflaged() && !frozen, "a switch past the menu's turned a cheat on");
 		return 0;
 	}
 	/* a script's cheat (b30's deathless player) stays while the menu does nothing */
@@ -198,6 +213,22 @@ int main(int argc, char **argv)
 			"camouflage not turned off: flags %#lx", units[0].unit.flags);
 		CHECK(cheat.deathless_player, "god mode went off with camouflage");
 		CHECK(!(host_report & (1 << 9)), "camouflage still reported, %#x", host_report);
+		return 0;
+	}
+	/* the time freeze, the eleventh switch: on, reported, set once while
+	other switches change, and off */
+	CASE("time-freeze-switch")
+	{
+		menu_switches(1 << 10);
+		touch_cheats_update();
+		CHECK(frozen && (host_report & (1 << 10)), "time freeze not on and reported, %#x", host_report);
+		CHECK(switches_on() == 0, "the time freeze turned a cheat global on");
+		menu_switches(1 << 10 | 1 << 1);
+		touch_cheats_update();
+		CHECK(freeze_sets == 1, "set %d times: another switch's change set it again", freeze_sets);
+		menu_switches(1 << 1);
+		touch_cheats_update();
+		CHECK(!frozen && !(host_report & (1 << 10)), "time freeze not off");
 		return 0;
 	}
 	/* a camouflage powerup picked up shows as the switch on, and the switch turns it off */

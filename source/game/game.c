@@ -182,6 +182,7 @@ struct game_options;
 #include "units/units.h"
 #include "units/vehicles.h"
 #include "network_coop.h" /* port: port/linux/game/network_coop.c */
+#include "time_freeze.h" /* port: port/linux/game/time_freeze.c */
 #ifdef HALO_PROFILE
 #include "profile_console.h" /* port: port/linux/game/profile_console.c */
 #endif
@@ -359,7 +360,11 @@ void game_tick(
 	distributed netcode has from the host: its own would fight the host's
 	positions, and could place objects of their own) */
 	if (!network_game_distributed_client())
-		profile_scope(game_tick_ai_section, ai_update();)
+	{
+		/* port: the cheats menu's time freeze: no actor thinks */
+		if (!time_freeze_active())
+			profile_scope(game_tick_ai_section, ai_update();)
+	}
 	else
 		profile_scope(game_tick_actors_drive_section, network_actors_drive();)
 	profile_scope(game_tick_players_before_section, players_update_before_game();)
@@ -384,9 +389,11 @@ void game_tick(
 	/* port: in network co-op only the host runs the scripts. A client running
 	them would place the map's actors and objects a second time and make
 	decisions that belong to the host. */
-	if (!(network_game_distributed_client() && network_coop_active()))
+	if (!(network_game_distributed_client() && network_coop_active()) &&
+		!time_freeze_active()) /* port: the time freeze: no script runs */
 		profile_scope(game_tick_hs_section, hs_update();)
-	profile_scope(game_tick_recorded_animations_section, recorded_animations_update();)
+	if (!time_freeze_active()) /* port: nor recorded animations */
+		profile_scope(game_tick_recorded_animations_section, recorded_animations_update();)
 	profile_scope(game_tick_objects_section, objects_update();)
 	profile_scope(game_tick_players_after_section, players_update_after_game();)
 	profile_scope(game_tick_hud_section, hud_update();)

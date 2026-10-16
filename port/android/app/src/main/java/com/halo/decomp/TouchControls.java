@@ -110,6 +110,7 @@ public final class TouchControls extends View implements SensorEventListener, In
         {"Bump possession", "Walk into a unit to take it over"},
         {"Damage effects", "Your hits shake your view"},
         {"Camouflage", "Enemies can hardly see you; off fades you back in"},
+        {"Time freeze", "Everything stops but you (offline games only)"},
     };
     /** the menu's one-time cheats, in the order of touch_game.c's bits */
     private static final String[] CHEAT_ACTIONS = {"All weapons", "All vehicles", "All powerups"};

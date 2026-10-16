@@ -15,6 +15,7 @@ game. The platform layer cannot see the game's types, so it asks here
 #include "input/input_abstraction.h"
 #include "interface/ui_widget.h"
 #include "units/units.h"
+#include "time_freeze.h"
 
 /* asks whether a cinematic is playing that A would skip
 (player_control.c, player_control_action_test_check_reset_input_blob); tests
@@ -88,6 +89,8 @@ static boolean *touch_game_cheat_switch(int index)
 /* the switch after the cheat globals': camouflage, which is the unit's own
 (its flag, as a camouflage powerup sets it), not a cheat global */
 #define TOUCH_GAME_CHEAT_CAMOUFLAGE 9
+/* ... and the time freeze (time_freeze.c) */
+#define TOUCH_GAME_CHEAT_TIME_FREEZE 10
 
 /* the unit of local player 1 (the touch controls' player), NULL without;
 only in a game being played: the controller is read from the first frame,
@@ -154,6 +157,8 @@ int touch_game_cheats_state(void)
 	}
 	if (touch_game_camouflaged())
 		bits |= 1 << TOUCH_GAME_CHEAT_CAMOUFLAGE;
+	if (time_freeze_wanted())
+		bits |= 1 << TOUCH_GAME_CHEAT_TIME_FREEZE;
 	return bits;
 }
 
@@ -163,6 +168,7 @@ void touch_game_cheats_set(int bits)
 {
 	boolean *value;
 	boolean camouflage = (bits & (1 << TOUCH_GAME_CHEAT_CAMOUFLAGE)) ? TRUE : FALSE;
+	boolean time_freeze = (bits & (1 << TOUCH_GAME_CHEAT_TIME_FREEZE)) ? TRUE : FALSE;
 	int index;
 
 	for (index = 0; (value = touch_game_cheat_switch(index)) != NULL; index++)
@@ -171,6 +177,8 @@ void touch_game_cheats_set(int bits)
 	}
 	if (camouflage != touch_game_camouflaged())
 		touch_game_camouflage_set(camouflage);
+	if (time_freeze != time_freeze_wanted())
+		time_freeze_set(time_freeze);
 }
 
 /* the menu's one-time cheats, as bits (TouchControls.java's CHEAT_ACTIONS):
