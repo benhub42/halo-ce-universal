@@ -56,6 +56,9 @@ public final class TouchControls extends View implements SensorEventListener, In
     private static final int TOOLBAR_OPTIONS = -4;
     private static final int TOOLBAR_EXPORT = -6;
     private static final int TOOLBAR_IMPORT = -7;
+    /** the floating Cheats button: a tap opens the cheats menu, a drag moves it */
+    private static final int TOOLBAR_CHEATS = -8;
+    private static final float CHEATS_RADIUS = 30;
     private static final float TOOLBAR_RADIUS = 28;
     private static final float OPTIONS_RADIUS = 34;
 
@@ -88,10 +91,34 @@ public final class TouchControls extends View implements SensorEventListener, In
     private static final int SCENE_MENUS = 2;
     private static final int SCENE_ON = 4;
     private static final int SCENE_OFF = 8;
+    /** input.touch_cheats_button: the floating Cheats button shows */
+    private static final int SCENE_CHEATS = 16;
+
+    /** what the game reports to the cheats menu (touch_input.c's _touch_cheats_*): the switches that are on in the low bits */
+    private static final int CHEATS_SWITCH_MASK = 0xffff;
+    private static final int CHEATS_ALLOWED = 1 << 16;
+    private static final int CHEATS_KNOWN = 1 << 17;
+    /** the cheats menu's switches, in the order of touch_game.c's bits, and what each does */
+    private static final String[][] CHEAT_SWITCHES = {
+        {"God mode", "You take no damage"},
+        {"Infinite ammo", "No ammo or grenades used"},
+        {"Bottomless clip", "Never reload"},
+        {"Jetpack", "Hold jump to fly"},
+        {"Super jump", "Jump much higher"},
+        {"Medusa", "Enemies that see you die"},
+        {"One-hit kills", "Every hit kills"},
+        {"Bump possession", "Walk into a unit to take it over"},
+        {"Damage effects", "Your hits shake your view"},
+    };
+    /** the menu's one-time cheats, in the order of touch_game.c's bits */
+    private static final String[] CHEAT_ACTIONS = {"All weapons", "All vehicles", "All powerups", "Camouflage"};
 
     private static final String PREFERENCES = "touch-layout-v1";
     private static final String KEY_CONFIGURATION = "configuration";
     private static final String KEY_HIDDEN = "hidden";
+    /** where the Cheats button floats, as fractions of the display (none: its first place) */
+    private static final String KEY_CHEATS_X = "cheats-x";
+    private static final String KEY_CHEATS_Y = "cheats-y";
 
     /**
      * a kind of control: the SDL button bit or trigger axis it sends (-1 for
@@ -153,6 +180,9 @@ public final class TouchControls extends View implements SensorEventListener, In
     private static native int nativeRumble();
     private static native int nativeScene();
     private static native int nativeBindings(int[] controls);
+    private static native void nativeCheats(int switches);
+    private static native void nativeCheatAction(int actions);
+    private static native int nativeCheatsState();
 
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final SharedPreferences preferences;
@@ -215,6 +245,18 @@ public final class TouchControls extends View implements SensorEventListener, In
     private final int[] bindings = DEFAULT_BINDINGS.clone();
     private final int[] bindingsRead = new int[bindings.length];
     private int bindingsSerial;
+    /** what the game last reported to the cheats menu (CHEATS_*) */
+    private int cheatsState;
+    /** the Cheats button's place, as fractions of the display (-1: its first place) */
+    private float cheatsFractionX = -1;
+    private float cheatsFractionY = -1;
+    /** the finger on the Cheats button, where it went down (pixels), and whether it drags the button */
+    private int cheatsPointer = -1;
+    private float cheatsDownX;
+    private float cheatsDownY;
+    private float cheatsOffsetX;
+    private float cheatsOffsetY;
+    private boolean cheatsDragging;
 
     /** reads what the game says every frame: when to show, the buttons' names, and the rumble */
     private final Runnable poll = new Runnable() {
@@ -225,6 +267,7 @@ public final class TouchControls extends View implements SensorEventListener, In
             scene = nativeScene();
             updateShowing();
             readBindings();
+            readCheats();
             updateRumble();
             postDelayed(this, POLL_MS);
         }
@@ -245,6 +288,8 @@ public final class TouchControls extends View implements SensorEventListener, In
         preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE);
         loadLayout(context);
         hidden = preferences.getBoolean(KEY_HIDDEN, false);
+        cheatsFractionX = preferences.getFloat(KEY_CHEATS_X, -1);
+        cheatsFractionY = preferences.getFloat(KEY_CHEATS_Y, -1);
         refreshInputDevices();
         setFocusable(false);
         setContentDescription("Halo touch controller");
@@ -434,6 +479,8 @@ public final class TouchControls extends View implements SensorEventListener, In
     public void reset() {
         dragPointer = -1;
         dragControl = -1;
+        cheatsPointer = -1;
+        cheatsDragging = false;
         owners.clear();
         buttonTouches.clear();
         toolbarFingers.clear();
@@ -521,6 +568,8 @@ public final class TouchControls extends View implements SensorEventListener, In
             return TOOLBAR_IMPORT;
         if (!editing && inside(x, y, logicalWidth / 2, toolbarY(), toolbarRadius(TOOLBAR_RADIUS)))
             return TOOLBAR_TOGGLE;
+        if (cheatsShown() && inside(x, y, cheatsX(), cheatsY(), toolbarRadius(CHEATS_RADIUS)))
+            return TOOLBAR_CHEATS;
         if (hidden && !editing)
             return NOTHING;
         for (int i = 0; i < layout.size(); i++) {
@@ -611,7 +660,16 @@ public final class TouchControls extends View implements SensorEventListener, In
             floatStick(x, y);
             target = stick;
         }
-        if (target == TOOLBAR_OPTIONS || target == TOOLBAR_TOGGLE) {
+        if (target == TOOLBAR_CHEATS) {
+            if (cheatsPointer < 0) {
+                cheatsPointer = id;
+                cheatsDownX = px;
+                cheatsDownY = py;
+                cheatsOffsetX = x - cheatsX();
+                cheatsOffsetY = y - cheatsY();
+                cheatsDragging = false;
+            }
+        } else if (target == TOOLBAR_OPTIONS || target == TOOLBAR_TOGGLE) {
             toolbarFingers.put(id, new float[] {px, py, target});
         } else if (target != NOTHING) {
             owners.put(id, target);
@@ -637,6 +695,14 @@ public final class TouchControls extends View implements SensorEventListener, In
     }
 
     private void fingerMoved(int id, float px, float py) {
+        if (id == cheatsPointer) {
+            // past the slop the finger drags the Cheats button; it never aims
+            if (!cheatsDragging && Math.hypot(px - cheatsDownX, py - cheatsDownY) > SLOP * scale)
+                cheatsDragging = true;
+            if (cheatsDragging)
+                moveCheats(logical(px) - cheatsOffsetX, logical(py) - cheatsOffsetY);
+            return;
+        }
         int control = owners.get(id, NOTHING);
         if (control >= 0 && layout.type(control) == TouchLayout.LEFT)
             moveStick(control, logical(px), logical(py));
@@ -667,6 +733,18 @@ public final class TouchControls extends View implements SensorEventListener, In
     }
 
     private void fingerUp(int id, float px, float py) {
+        if (id == cheatsPointer) {
+            cheatsPointer = -1;
+            if (cheatsDragging) {
+                cheatsDragging = false;
+                preferences.edit().putFloat(KEY_CHEATS_X, cheatsFractionX)
+                    .putFloat(KEY_CHEATS_Y, cheatsFractionY).apply();
+            } else if (hit(logical(px), logical(py)) == TOOLBAR_CHEATS) {
+                showCheats();
+                performClick();
+            }
+            return;
+        }
         float[] toolbar = toolbarFingers.get(id);
         if (toolbar != null) {
             toolbarFingers.remove(id);
@@ -1105,6 +1183,98 @@ public final class TouchControls extends View implements SensorEventListener, In
         Toast.makeText(getContext(), message, Toast.LENGTH_LONG).show();
     }
 
+    // ---------- the cheats menu (port/linux/game/touch_game.c applies it)
+
+    /** the Cheats button shows over the controls in a game (even hidden by Hide), not in the layout editor */
+    private boolean cheatsShown() {
+        return (scene & SCENE_CHEATS) != 0 && !editing;
+    }
+
+    private float cheatsRadius() {
+        return toolbarRadius(CHEATS_RADIUS);
+    }
+
+    /** the Cheats button's centre (logical units): where it was put, or near the top left, clear of the toolbar */
+    private float cheatsX() {
+        float radius = cheatsRadius();
+        float x = cheatsFractionX >= 0 ? cheatsFractionX * logicalWidth : logicalWidth * 0.25f;
+        return Math.max(radius, Math.min(logicalWidth - radius, x));
+    }
+
+    private float cheatsY() {
+        float radius = cheatsRadius();
+        float y = cheatsFractionY >= 0 ? cheatsFractionY * logicalHeight : toolbarY();
+        return Math.max(radius, Math.min(logicalHeight - radius, y));
+    }
+
+    private void moveCheats(float x, float y) {
+        float radius = cheatsRadius();
+        x = Math.max(radius, Math.min(logicalWidth - radius, x));
+        y = Math.max(radius, Math.min(logicalHeight - radius, y));
+        cheatsFractionX = x / logicalWidth;
+        cheatsFractionY = y / logicalHeight;
+    }
+
+    private void readCheats() {
+        int state = nativeCheatsState();
+        if (state != cheatsState) {
+            cheatsState = state;
+            invalidate();
+        }
+    }
+
+    private boolean cheatsAllowed() {
+        return (cheatsState & CHEATS_KNOWN) != 0 && (cheatsState & CHEATS_ALLOWED) != 0;
+    }
+
+    private void showCheats() {
+        readCheats();
+        if (!cheatsAllowed()) {
+            toast("Cheats work only in your own games: in another player's game its host's rules hold.");
+            return;
+        }
+        LinearLayout panel = new LinearLayout(getContext());
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(32, 16, 32, 16);
+        Switch[] switches = new Switch[CHEAT_SWITCHES.length];
+        int on = cheatsState & CHEATS_SWITCH_MASK;
+        for (int i = 0; i < switches.length; i++) {
+            Switch item = new Switch(getContext());
+            item.setText(CHEAT_SWITCHES[i][0] + "\n" + CHEAT_SWITCHES[i][1]);
+            item.setChecked((on & (1 << i)) != 0);
+            item.setPadding(0, 8, 0, 8);
+            switches[i] = item;
+            panel.addView(item);
+        }
+        for (Switch item : switches) {
+            item.setOnCheckedChangeListener((view, checked) -> {
+                int bits = 0;
+                for (int i = 0; i < switches.length; i++) {
+                    if (switches[i].isChecked())
+                        bits |= 1 << i;
+                }
+                nativeCheats(bits);
+            });
+        }
+        TextView spawn = text("Once (around you)");
+        spawn.setPadding(0, 24, 0, 4);
+        panel.addView(spawn);
+        for (int i = 0; i < CHEAT_ACTIONS.length; i++) {
+            final int action = i;
+            panel.addView(button(CHEAT_ACTIONS[i], view -> {
+                nativeCheatAction(1 << action);
+                toast(CHEAT_ACTIONS[action] + ": done");
+            }));
+        }
+        ScrollView scroll = new ScrollView(getContext());
+        scroll.addView(panel);
+        openDialog(new AlertDialog.Builder(getContext())
+            .setTitle("Cheats")
+            .setView(scroll)
+            .setPositiveButton("Done", null)
+            .create());
+    }
+
     // ---------- the gyroscope and the vibration
 
     private void updateSensors() {
@@ -1217,7 +1387,30 @@ public final class TouchControls extends View implements SensorEventListener, In
         } else {
             toolbarItem(canvas, logicalWidth / 2, TOOLBAR_RADIUS, hidden ? "Touch" : "Hide");
             toolbarItem(canvas, optionsX(), OPTIONS_RADIUS, "Options");
+            if (cheatsShown())
+                drawCheats(canvas);
         }
+    }
+
+    /** the Cheats button: amber, lit while a switch is on, dimmed where cheats cannot act */
+    private void drawCheats(Canvas canvas) {
+        float x = cheatsX();
+        float y = cheatsY();
+        float radius = cheatsRadius();
+        boolean active = (cheatsState & CHEATS_SWITCH_MASK) != 0;
+        float opacity = cheatsAllowed() ? Math.max(layout.opacity, 0.6f) : 0.3f;
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(alpha(active || cheatsDragging ? 0xccffb300 : 0x88a06a00, opacity));
+        canvas.drawCircle(x, y, radius, paint);
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(active ? 3 : 2);
+        paint.setColor(alpha(active ? 0xffffe082 : 0xffffc947, opacity));
+        canvas.drawCircle(x, y, radius, paint);
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(alpha(Color.WHITE, Math.max(opacity, 0.5f)));
+        paint.setTextAlign(Paint.Align.CENTER);
+        paint.setTextSize(11);
+        canvas.drawText("Cheats", x, y + 11 * 0.36f, paint);
     }
 
     private void drawStick(Canvas canvas) {

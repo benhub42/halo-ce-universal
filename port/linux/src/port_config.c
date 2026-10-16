@@ -210,6 +210,12 @@ static const struct config_setting config_settings[] =
 		"The touch controls' swipe aiming gets a controller's aim assist: the\n"
 		"aim slows over a target and follows a moving one. false: none, as a\n"
 		"mouse (the bullets' own autoaim stays)." },
+	{ "input.touch_cheats_button", _config_boolean, "true", "HALO_TOUCH_CHEATS_BUTTON", _environment_value, _platform_android,
+		"The touch controls show a floating Cheats button: tap it for switches\n"
+		"(god mode, infinite ammo, bottomless clip, jetpack, super jump, medusa,\n"
+		"one-hit kills, bump possession, damage effects) and one-time cheats\n"
+		"(all weapons, vehicles, powerups, camouflage); drag it to move it.\n"
+		"Cheats act in your own games only: in another's, its host's rules hold." },
 	{ "input.mouse_sensitivity", _config_real, "1.0", "HALO_MOUSE_SENSITIVITY", _environment_value, _platform_desktop,
 		"How far the view turns for the mouse's movement." },
 	{ "input.invert_mouse", _config_boolean, "false", "HALO_MOUSE_INVERT", _environment_set_is_true, _platform_desktop,

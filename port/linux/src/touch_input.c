@@ -25,6 +25,8 @@ void host_touch_look_read(float *delta);
 void host_touch_rumble(unsigned int low, unsigned int high);
 void host_touch_scene(int scene);
 void host_touch_bindings(const int *controls);
+void host_touch_cheats_read(int *request);
+void host_touch_cheats_report(int state);
 #endif
 
 /* the game's (port/linux/game/touch_game.c) */
@@ -32,6 +34,10 @@ int touch_game_cinematic_skippable(void);
 int touch_game_cinematic_playing(void);
 int touch_game_playing(void);
 void touch_game_button_controls(int *controls);
+int touch_game_cheats_allowed(void);
+int touch_game_cheats_state(void);
+void touch_game_cheats_set(int bits);
+void touch_game_cheats_act(int actions);
 
 /* the gamepad's buttons (input.h), which the touch controls are named by */
 #define TOUCH_BUTTONS 16
@@ -208,6 +214,19 @@ enum
 	device has a touchscreen and no controller) */
 	_touch_scene_on = 1 << 2,
 	_touch_scene_off = 1 << 3,
+	/* input.touch_cheats_button: the overlay shows its floating Cheats
+	button */
+	_touch_scene_cheats = 1 << 4,
+};
+
+/* what the game tells the cheats menu (host_touch_cheats_report): the
+switches that are on in the low 16 bits (touch_game_cheats_state), then */
+enum
+{
+	/* the menu may act: a game, not a client's in another's */
+	_touch_cheats_allowed = 1 << 16,
+	/* the game has reported once */
+	_touch_cheats_known = 1 << 17,
 };
 
 /* the touch controls' stick at port 0's last read, -1..1, y down */
@@ -233,6 +252,44 @@ static int touch_controls_setting(void)
 	return setting;
 }
 
+/* input.touch_cheats_button as _touch_scene_cheats or 0 */
+static int touch_cheats_setting(void)
+{
+	static int setting;
+	static unsigned long read_at = (unsigned long)-1;
+
+	if (read_at != config_changes())
+	{
+		read_at = config_changes();
+		setting = config_boolean("input.touch_cheats_button") ? _touch_scene_cheats : 0;
+	}
+	return setting;
+}
+
+/* applies what the cheats menu asked since the last read: its switches when
+they changed, and its one-time cheats, here on the game's main thread
+(between ticks, as the console's cheats run); asks while cheats may not act
+are dropped. Then tells the menu the switches that are on. */
+static void touch_cheats_update(void)
+{
+	static int serial_read;
+	int request[3];
+	int allowed;
+
+	host_touch_cheats_read(request);
+	allowed = touch_game_cheats_allowed();
+	if (allowed)
+	{
+		if (request[0] != serial_read)
+			touch_game_cheats_set(request[1]);
+		if (request[2])
+			touch_game_cheats_act(request[2]);
+	}
+	serial_read = request[0];
+	host_touch_cheats_report(_touch_cheats_known | (allowed ? _touch_cheats_allowed : 0) |
+		(touch_game_cheats_state() & 0xffff));
+}
+
 void touch_input_controls(XINPUT_GAMEPAD *pad, int menus)
 {
 	/* SDL's gamepad buttons, in order (SDL_GamepadButton); the first four
@@ -256,7 +313,7 @@ void touch_input_controls(XINPUT_GAMEPAD *pad, int menus)
 
 	/* (the controls show only in a game: not while it starts, at the main
 	menu, in a menu or during a cinematic) */
-	host_touch_scene(_touch_scene_known | touch_controls_setting() |
+	host_touch_scene(_touch_scene_known | touch_controls_setting() | touch_cheats_setting() |
 		(menus || !touch_game_playing() || touch_game_cinematic_playing() ? _touch_scene_menus : 0));
 	/* (the profile's mapping, for the buttons' names; only when it changes) */
 	touch_game_button_controls(bindings);
@@ -266,6 +323,7 @@ void touch_input_controls(XINPUT_GAMEPAD *pad, int menus)
 		bindings_known = TRUE;
 		host_touch_bindings(bindings);
 	}
+	touch_cheats_update();
 	host_touch_read(state);
 	/* the stick moves the player through the game's input state, whatever
 	the profile's sticks do (touch_input_move), not as the left stick */

@@ -205,6 +205,40 @@ starts on them turns the view instead.
 The app keeps the layout in its own preferences, not in `config.toml`.
 Removing the app's data or the app removes the layout.
 
+### Cheats menu
+
+In a game, a round amber "Cheats" button floats over the touch controls
+(near the top left at first). Tap it to open the cheats menu; drag it to
+put it somewhere else (the app remembers the place). It stays when "Hide"
+removes the other controls. The setting `input.touch_cheats_button`
+removes it.
+
+The menu's switches turn the game's own cheats on and off:
+
+| Switch | Cheat (console global) |
+| --- | --- |
+| God mode | `cheat_deathless_player` |
+| Infinite ammo | `cheat_infinite_ammo` (no grenades or reserve used) |
+| Bottomless clip | `cheat_bottomless_clip` (never reload) |
+| Jetpack | `cheat_jetpack` |
+| Super jump | `cheat_super_jump` |
+| Medusa | `cheat_medusa` (enemies that see you die) |
+| One-hit kills | `cheat_omnipotent` |
+| Bump possession | `cheat_bump_possession` (walk into a unit to take it over) |
+| Damage effects | `cheat_reflexive_damage_effects` (your hits shake your view) |
+
+Its buttons place objects around the player once: "All weapons", "All
+vehicles" (the map's multiplayer vehicles), "All powerups" and
+"Camouflage". The button lights up while a switch is on. The switches
+last until the app closes, across levels; scripts set some too (the last
+level makes the player deathless around its cinematics), and the menu
+shows them as they are.
+
+Cheats act only in your own games: the campaign, and the games you host.
+As a client in another's game the host's rules hold (the port puts a
+client's cheats back each frame), so the button is dimmed there and the
+menu does nothing.
+
 ## Settings
 
 The settings are in `config.toml` in the data folder of the app. To change
@@ -224,6 +258,7 @@ These settings are only for Android:
 | Setting | Function |
 | --- | --- |
 | `input.touch_aim_assist` | `true` (the default): the touch controls' swipe aiming gets the aim assist of a controller (the aim slows over a target and follows a moving one). `false`: none, as with a mouse; the bullets' own autoaim stays. |
+| `input.touch_cheats_button` | `true` (the default): the touch controls show a floating Cheats button (refer to "Cheats menu"). `false`: no button. |
 | `input.touch_controls` | The touch controls in a game. `"auto"` (the default): shown on a touchscreen while no controller is connected. `"on"`: also shown with a controller. `"off"`: never shown. A device without a touchscreen never shows them. The menus take taps in any case. |
 | `display.screen_width` | The number of columns of the 480-line picture. `0` (the default): the shape of the display (1068 on a 20:9 phone). `640`: the 4:3 shape of the Xbox. |
 | `debug.sample_seconds` | Refer to "Find problems". |

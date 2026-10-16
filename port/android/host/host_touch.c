@@ -47,6 +47,14 @@ its changes, which the overlay polls */
 #define TOUCH_BUTTONS 16
 static int32_t touch_bindings[TOUCH_BUTTONS];
 static int touch_bindings_serial;
+/* the cheats menu (TouchControls.java's showCheats): the switches it wants
+and a count of its changes, the one-time cheats it asked for since the
+game's last read, and what the game last reported (touch_input.c's
+_touch_cheats_* bits and the switches that are on) */
+static int32_t cheats_wanted;
+static int32_t cheats_serial;
+static int32_t cheats_actions;
+static volatile int32_t cheats_reported;
 
 static int64_t now_ns(void)
 {
@@ -226,4 +234,55 @@ JNIEXPORT jint JNICALL Java_com_halo_decomp_TouchControls_nativeScene(JNIEnv *en
 	(void)env;
 	(void)cls;
 	return touch_scene;
+}
+
+/* the cheats menu's switches, as touch_game.c's bits: the game applies them
+at its next read of port 0 */
+JNIEXPORT void JNICALL Java_com_halo_decomp_TouchControls_nativeCheats(JNIEnv *env, jclass cls, jint switches)
+{
+	(void)env;
+	(void)cls;
+	pthread_mutex_lock(&touch_lock);
+	cheats_wanted = switches;
+	cheats_serial++;
+	pthread_mutex_unlock(&touch_lock);
+}
+
+/* asks for one-time cheats (touch_game.c's bits), done once at the game's
+next read */
+JNIEXPORT void JNICALL Java_com_halo_decomp_TouchControls_nativeCheatAction(JNIEnv *env, jclass cls, jint actions)
+{
+	(void)env;
+	(void)cls;
+	pthread_mutex_lock(&touch_lock);
+	cheats_actions |= actions;
+	pthread_mutex_unlock(&touch_lock);
+}
+
+/* what the game last reported; 0 before its first read */
+JNIEXPORT jint JNICALL Java_com_halo_decomp_TouchControls_nativeCheatsState(JNIEnv *env, jclass cls)
+{
+	(void)env;
+	(void)cls;
+	return cheats_reported;
+}
+
+/* the guest's, at every read of port 0: the count of the menu's changes,
+the switches it wants and the one-time cheats asked for since the last
+read, into request[3] */
+void host_touch_cheats_read(int32_t *request)
+{
+	pthread_mutex_lock(&touch_lock);
+	request[0] = cheats_serial;
+	request[1] = cheats_wanted;
+	request[2] = cheats_actions;
+	cheats_actions = 0;
+	pthread_mutex_unlock(&touch_lock);
+}
+
+/* the guest's, after each read: whether the menu may act and the switches
+that are on (touch_input.c's _touch_cheats_* bits) */
+void host_touch_cheats_report(int32_t state)
+{
+	cheats_reported = state;
 }

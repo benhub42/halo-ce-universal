@@ -61,5 +61,7 @@ host_touch_look_read
 host_touch_rumble
 host_touch_scene
 host_touch_bindings
+host_touch_cheats_read
+host_touch_cheats_report
 
 host_errno
